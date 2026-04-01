@@ -1,0 +1,30 @@
+FROM  nvcr.io/nvidia/pytorch:23.12-py3 
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get -y update && \
+    apt-get install -yq --no-install-recommends \
+    build-essential \
+    libgl1-mesa-glx \
+    libglib2.0-0 && \
+    apt install git-lfs && \
+    apt install -y screen
+
+RUN rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
+
+WORKDIR /workspace/code
+
+COPY . /workspace/code
+
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
+RUN pip install gdown
+RUN pip install --upgrade notebook jupyterlab traitlets ipywidgets jupyter_contrib_nbextensions
+RUN pip install seaborn==0.13.2
+RUN pip uninstall -y transformer-engine
+RUN pip install numpy==1.26.4
+
+
+# Set environment variables
+ENV WANDB_MODE=disabled
