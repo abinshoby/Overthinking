@@ -1,4 +1,4 @@
-# Import libraries
+# Import necessary libraries
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
@@ -6,6 +6,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import classification_report, accuracy_score, roc_auc_score, roc_curve, average_precision_score, f1_score
 from sklearn.neural_network import MLPClassifier
+import argparse
+from feature_extract import compute_overthinking
 
 def balance_data(df):
     min_size = df['target'].value_counts().min()
@@ -41,84 +43,121 @@ def norm_data(train_df, test_df):
     return train_scaled, test_scaled, scaler
 
 
-train_df_full = pd.read_csv("/workspace/data/Detection/overthink/data3/with_score_train.csv")
-test_df_full = pd.read_csv("/workspace/data/Detection/overthink/data3/with_score_test.csv")
+def load_data(train_path, test_path):
 
-# Select columns required for training and testing
-layers=32
-tk=10
-entropy_features = [f"H_{i}" for i in range(layers)]
-img_attn_features = [f"IA_{i}" for i in range(layers)]
-txt_attn_features = [f"TA_{i}" for i in range(layers)]
-columns = entropy_features + img_attn_features + txt_attn_features + ["overthinking_score", "target"]
+    train_df = pd.read_csv(train_path)
+    test_df = pd.read_csv(test_path)
 
-train_df = train_df_full[columns]
-test_df = test_df_full[columns]
+    # Compute no of layers from column names
+    layer_cols = [col for col in train_df.columns if col.startswith("H_")]
+    layers = len(layer_cols)
+    return train_df, test_df, layers
 
-# scale the data
-train_df_orig = train_df.copy()
-test_df_orig = test_df.copy()
-train_df, test_df, scaler = norm_data(train_df, test_df)
+def preprocess_data(train_df_full, test_df_full, layers):
+    # Select columns required for training and testing
+    tk=10
+    entropy_features = [f"H_{i}" for i in range(layers)]
+    img_attn_features = [f"IA_{i}" for i in range(layers)]
+    txt_attn_features = [f"TA_{i}" for i in range(layers)]
 
-# Balance the training data
-train_df = balance_data(train_df)
+    if 'overthinking_score' not in  train_df_full.columns:
+        # perform apply overthinking score computation to both train and test dataframes
+        # the function accepts rows of the dataframe and computes the overthinking score based on the entropy features
+        train_df_full['overthinking_score'] = train_df_full.apply(lambda row: compute_overthinking(row), axis=1)
+        test_df_full['overthinking_score'] = test_df_full.apply(lambda row: compute_overthinking(row), axis=1)
+    
+    train_df_full['repeat'] = train_df_full.duplicated(subset=['image_id', 'next_token']).astype(int)
+    test_df_full['repeat'] = test_df_full.duplicated(subset=['image_id', 'next_token']).astype(int)
+    columns = entropy_features + img_attn_features + txt_attn_features + ["overthinking_score", "repeat", "target"]
 
-# Train Logistic Regression
-lr_model = LogisticRegression(max_iter=2000, solver='lbfgs',random_state=42)
-lr_model.fit(train_df.drop(['target'], axis=1), train_df['target'])
+    train_df = train_df_full[columns]
+    test_df = test_df_full[columns]
 
-y_pred_lr = lr_model.predict(test_df.drop(['target'], axis=1))
-y_prob_lr = lr_model.predict_proba(test_df.drop(['target'], axis=1))[:, 1]
+    # scale the data
+    train_df_orig = train_df.copy()
+    test_df_orig = test_df.copy()
+    train_df, test_df, scaler = norm_data(train_df, test_df)
 
-print("=== Logistic Regression ===")
-print("Accuracy:", accuracy_score(test_df['target'], y_pred_lr))
-print(classification_report(test_df['target'], y_pred_lr, digits=4))
+    # Balance the training data
+    train_df = balance_data(train_df)
 
-# --- AUC ---
-auc_score = roc_auc_score(test_df['target'], y_pred_lr)
-ap = average_precision_score(test_df['target'], y_pred_lr)
-print(f"AUC: {auc_score:.4f}")
-print(f"AP: {ap:.4f}")
-
-
-# Train Gradient Boosting Classifier
-gb_model = GradientBoostingClassifier(n_estimators=200, learning_rate=0.1, max_depth=10, random_state=42)
-gb_model.fit(train_df_orig.drop(['target'], axis=1), train_df_orig['target'])
-y_pred_gb = gb_model.predict(test_df_orig.drop(['target'], axis=1))
-y_probs_gb = gb_model.predict_proba(test_df_orig.drop(['target'], axis=1))[:, 1]
-print("=== Gradient Boosting Classifier ===")
-print("Accuracy:", accuracy_score(test_df_orig['target'], y_pred_gb))
-print(classification_report(test_df_orig['target'], y_pred_gb, digits=4))
-auc_score = roc_auc_score(test_df_orig['target'], y_probs_gb)
-ap = average_precision_score(test_df_orig['target'], y_probs_gb)
-print(f"AUC: {auc_score:.4f}")
-print(f"AP: {ap:.4f}")
+    return train_df, test_df, train_df_orig, test_df_orig, scaler
 
 
-# Train MLP Classifier
-X_train = train_df.drop(['target'], axis=1)
-y_train = train_df['target']
-X_test = test_df.drop(['target'], axis=1)
-y_test = test_df['target']
+def train_models(model_type, train_df, test_df, train_df_orig, test_df_orig):
+    if model_type == "LR":
+        # Train Logistic Regression
+        lr_model = LogisticRegression(max_iter=2000, solver='lbfgs',random_state=42)
+        lr_model.fit(train_df.drop(['target'], axis=1), train_df['target'])
 
-mlp_model = MLPClassifier(
-    hidden_layer_sizes=(128,),
-    activation='relu',
-    solver='sgd',
-    max_iter=2000,
-    random_state=42,
-    learning_rate_init=0.01
-)
+        y_pred_lr = lr_model.predict(test_df.drop(['target'], axis=1))
+        y_prob_lr = lr_model.predict_proba(test_df.drop(['target'], axis=1))[:, 1]
 
-mlp_model.fit(X_train, y_train)
+        print("=== Logistic Regression ===")
+        print("Accuracy:", accuracy_score(test_df['target'], y_pred_lr))
+        print(classification_report(test_df['target'], y_pred_lr, digits=4))
 
-y_pred_mlp = mlp_model.predict(X_test)
-y_prob_mlp = mlp_model.predict_proba(X_test)[:, 1]
+        # --- AUC ---
+        auc_score = roc_auc_score(test_df['target'], y_pred_lr)
+        ap = average_precision_score(test_df['target'], y_pred_lr)
+        print(f"AUC: {auc_score:.4f}")
+        print(f"AP: {ap:.4f}")
+    elif model_type == "GB":
 
-print("=== MLP Classifier ===")
-print("Accuracy:", accuracy_score(test_df_orig['target'], y_pred_mlp))
-print(classification_report(test_df_orig['target'], y_pred_mlp, digits=4))
-auc_score = roc_auc_score(test_df_orig['target'], y_prob_mlp)
-ap = average_precision_score(test_df_orig['target'], y_prob_mlp)
-print(f"AUC: {auc_score:.4f}")
-print(f"AP: {ap:.4f}")
+        # Train Gradient Boosting Classifier
+        gb_model = GradientBoostingClassifier(n_estimators=200, learning_rate=0.1, max_depth=10, random_state=42)
+        gb_model.fit(train_df_orig.drop(['target'], axis=1), train_df_orig['target'])
+        y_pred_gb = gb_model.predict(test_df_orig.drop(['target'], axis=1))
+        y_probs_gb = gb_model.predict_proba(test_df_orig.drop(['target'], axis=1))[:, 1]
+        print("=== Gradient Boosting Classifier ===")
+        print("Accuracy:", accuracy_score(test_df_orig['target'], y_pred_gb))
+        print(classification_report(test_df_orig['target'], y_pred_gb, digits=4))
+        auc_score = roc_auc_score(test_df_orig['target'], y_probs_gb)
+        ap = average_precision_score(test_df_orig['target'], y_probs_gb)
+        print(f"AUC: {auc_score:.4f}")
+        print(f"AP: {ap:.4f}")
+        
+    elif model_type == "MLP":
+        # Train MLP Classifier
+        X_train = train_df.drop(['target'], axis=1)
+        y_train = train_df['target']
+        X_test = test_df.drop(['target'], axis=1)
+        y_test = test_df['target']
+
+        mlp_model = MLPClassifier(
+            hidden_layer_sizes=(128,),
+            activation='relu',
+            solver='sgd',
+            max_iter=2000,
+            random_state=42,
+            learning_rate_init=0.01
+        )
+
+        mlp_model.fit(X_train, y_train)
+
+        y_pred_mlp = mlp_model.predict(X_test)
+        y_prob_mlp = mlp_model.predict_proba(X_test)[:, 1]
+
+        print("=== MLP Classifier ===")
+        print("Accuracy:", accuracy_score(test_df_orig['target'], y_pred_mlp))
+        print(classification_report(test_df_orig['target'], y_pred_mlp, digits=4))
+        auc_score = roc_auc_score(test_df_orig['target'], y_prob_mlp)
+        ap = average_precision_score(test_df_orig['target'], y_prob_mlp)
+        print(f"AUC: {auc_score:.4f}")
+        print(f"AP: {ap:.4f}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train classifiers for overthinking detection")
+    parser.add_argument("--train_path", type=str, default="./data/LLaVA-1.5/train.csv", help="Path to training data CSV")
+    parser.add_argument("--test_path", type=str, default="./data/LLaVA-1.5/test.csv", help="Path to testing data CSV")
+    parser.add_argument("--model_type", type=str, default="LR", choices=["LR", "GB", "MLP"], help="Type of model to train: LR (Logistic Regression), GB (Gradient Boosting), MLP (Multi-layer Perceptron)")
+    args = parser.parse_args()
+
+    # Load data
+    train_df_full, test_df_full, layers = load_data(args.train_path, args.test_path)
+    # Preprocess data
+    train_df, test_df, train_df_orig, test_df_orig, scaler = preprocess_data(train_df_full, test_df_full, layers)
+    # Train models and evaluate
+    train_models(args.model_type, train_df, test_df, train_df_orig, test_df_orig)
+
