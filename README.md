@@ -195,7 +195,7 @@ All classifiers are validated on a held-out 10% split of the training data. The 
 
 ## Outputs
 
-- **Feature CSV** — one row per (image, token, position) triple, with entropy, attention, and top-k token columns
+- **Feature CSV** — one row per (image, token, position) triple, with entropy, overthinking score, attention, and top-k token columns
 - **`./results/metrics.csv`** — appended with test-set metrics (accuracy, macro F1, AUC, AP, per-class precision/recall/F1) and best hyperparameters for each run
 - **`./saved_models/best_<MODEL>.pkl`** — serialised best classifier (and threshold for GB)
 
