@@ -185,9 +185,9 @@ python train_evaluate.py \
 
 **Supported classifiers:**
 
-- `LR` — Logistic Regression (grid search over regularisation strength `C`)
-- `GB` — Gradient Boosting (grid search over `n_estimators`, `max_depth`, `learning_rate`)
-- `MLP` — Multi-Layer Perceptron (grid search over hidden units, learning rate, and optimizer)
+- `LR` — Logistic Regression
+- `GB` — Gradient Boosting
+- `MLP` — Multi-Layer Perceptron
 
 All classifiers are validated on a held-out 10% split of the training data. The best model and threshold are saved to `model_save_dir`.
 
