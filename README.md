@@ -18,13 +18,11 @@
 
 ## Overview
 
-This repository contains the official implementation for the CVPR 2026 paper **"Overthinking Causes Hallucination: Tracing Confounder Propagation in Vision Language Models"**.
+Official implementation for our CVPR 2026 paper **"Overthinking Causes Hallucination: Tracing Confounder Propagation in Vision Language Models"**.
 
-We identify and formalise a key failure mode in Vision-Language Models (VLMs): **overthinking** — a phenomenon where a model's internal token predictions fluctuate inconsistently across transformer layers before settling on a final output. We show that this layer-wise prediction instability acts as a confounder that propagates hallucinations into the generated text.
-
-Central to our approach is the **Overthinking Score**, a novel interpretable metric that quantifies this instability by combining the mean prediction entropy across layers with the diversity of candidate tokens predicted at different depths. Tokens associated with high overthinking scores are significantly more likely to be hallucinated.
-
-We extract this score alongside complementary features from model internals (layer-wise entropy, image attention, and text attention) and train lightweight classifiers to detect hallucinated tokens at inference time — without any modification to the underlying VLM.
+**Our key finding**: Vision-Language Models can "*overthink*" and hallucinate.
+As VLMs process an image across decoder layers, they keep *revising their belliefs* about the visual content. When an incorrect hypothesis emerges, it can act as a **confounder** that propagates through subsequent layers, eventually leading to a hallucinated answer.
+We introduce an **Overthinking Score** that captures this internal instability and helps detect hallucinations.
 
 The pipeline supports three VLMs out of the box: **LLaVA-1.5**, **Qwen3-VL**, and **Gemma3**.
 
